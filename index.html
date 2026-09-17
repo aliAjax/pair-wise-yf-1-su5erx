@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>值班排班表</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --ink:#22283a; --muted:#8a90a3; --line:#e7eaf2;
+    --day-bg:#fff3df; --day-ink:#9a5b00; --day-bd:#f5cf96;
+    --night-bg:#e9edff; --night-ink:#3a4aa8; --night-bd:#bcc6f7;
+    --leave-bg:#eff1f6; --leave-ink:#6b7183; --leave-bd:#d8dce6;
+    --short-bg:#ffeaea; --short-ink:#c23a3a; --short-bd:#ffb9b9;
+    --accent:#3a6ff7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 16px 60px;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1040px;margin:0 auto}
+  header h1{margin:0 0 6px;font-size:26px}
+  header .sub{margin:0 0 18px;color:var(--muted);font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(30,40,80,.05)}
+  .card-title{font-weight:600;font-size:15px;margin-bottom:10px}
+  .card-title .hint{font-weight:400;color:var(--muted);font-size:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;
+        font-size:13px;border:1px solid transparent;cursor:pointer;background:none;font-family:inherit}
+  .chip.day{background:var(--day-bg);color:var(--day-ink);border-color:var(--day-bd)}
+  .chip.night{background:var(--night-bg);color:var(--night-ink);border-color:var(--night-bd)}
+  .chip.leav{background:var(--leave-bg);color:var(--leave-ink);border-color:var(--leave-bd);text-decoration:line-through}
+  .chip.roster-chip{background:#f2f5ff;color:#2f3b66;border-color:#dbe3ff;cursor:default}
+  .chip.roster-chip em{font-style:normal;color:var(--muted);font-size:12px}
+  .chip.roster-chip .x{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 2px;line-height:1}
+  .chip.roster-chip .x:hover{color:#c23a3a}
+  .chip.short{background:var(--short-bg);color:var(--short-ink);border:1px dashed var(--short-bd);cursor:default;font-weight:600}
+  .chip.add{border:1px dashed var(--leave-bd);color:var(--muted)}
+  .chip.add:hover{color:var(--accent);border-color:var(--accent)}
+  .chip.day:hover,.chip.night:hover{filter:brightness(.95)}
+  .toolbar{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .btn{padding:7px 16px;border-radius:9px;border:1px solid var(--line);background:#fff;
+       font-size:13px;cursor:pointer;color:var(--ink);font-family:inherit}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.danger:hover{border-color:#c23a3a;color:#c23a3a}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+  th{color:var(--muted);font-weight:500;font-size:12.5px;background:#fafbfe}
+  th small{display:block;font-weight:400;color:#aab0c0}
+  tbody tr:last-child td{border-bottom:none}
+  tr.row-short{background:#fff8f8}
+  .datecell b{font-size:14px}
+  .datecell .wk{color:var(--muted);font-size:12.5px;margin-left:4px}
+  .today{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--accent);
+         color:#fff;font-size:11px;vertical-align:2px}
+  .addleave{display:inline-flex;gap:4px;margin-left:4px}
+  .addleave select{font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:6px;font-family:inherit}
+  .addleave button{font-size:12px;padding:2px 8px;border:1px solid var(--line);border-radius:6px;
+                   background:#fff;cursor:pointer;font-family:inherit}
+  .addleave button:hover{border-color:var(--accent);color:var(--accent)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;color:var(--muted);font-size:12.5px;align-items:center}
+  .legend .chip{cursor:default}
+  #log{list-style:none;margin:0;padding:0;font-size:13px;color:#4a5168}
+  #log li{padding:4px 0;border-bottom:1px dashed var(--line)}
+  #log li:last-child{border-bottom:none}
+  #log li.warn{color:var(--short-ink)}
+  #log .empty{color:var(--muted)}
+  #stats{display:flex;flex-wrap:wrap;gap:6px}
+  .stat{padding:4px 12px;border-radius:999px;background:#f6f8fd;border:1px solid var(--line);font-size:12.5px;color:#4a5168}
+  .stat b{color:var(--ink)}
+  .rule-note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .rule-note b{color:#4a5168}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🗓️ 值班排班表</h1>
+    <p class="sub">未来 7 天 · 白班 / 夜班各 2 人 · 点击班次中的人名即可请假，系统自动补位 · 数据保存在本浏览器</p>
+  </header>
+
+  <section class="card">
+    <div class="card-title">同事名单 <span class="hint">（白/夜为当前班次数；点 × 移出名单，系统会自动补位）</span></div>
+    <div id="roster" class="chips"></div>
+    <div class="toolbar">
+      <button class="btn" data-action="add-person">＋ 添加同事</button>
+      <button class="btn" data-action="regenerate">↻ 重新生成排班</button>
+      <button class="btn danger" data-action="reset">清空重置</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:170px">日期</th>
+          <th>白班<small>08:00 – 20:00 · 需 2 人</small></th>
+          <th>夜班<small>20:00 – 08:00 · 需 2 人</small></th>
+          <th style="width:220px">请假</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="legend">
+      <span>图例：</span>
+      <span class="chip day">白班</span>
+      <span class="chip night">夜班</span>
+      <span class="chip leav">请假（点可取消）</span>
+      <span class="chip short">缺员</span>
+    </div>
+    <p class="rule-note">
+      <b>补位规则：</b>请假提交后，系统从当天<b>既未排班也未请假</b>的同事中，优先选累计班次最少者补位。<br>
+      <b>规则一（优先）：</b>任何人不得连续两个夜班（补夜班时，前一天或后一天已值夜班者不会被选中）。<br>
+      <b>规则二：</b>每班凑满 2 人 —— 若补位只能依靠连班，则该班标为「缺员」，绝不违反规则一。
+    </p>
+  </section>
+
+  <section class="card">
+    <div class="card-title">操作记录</div>
+    <ul id="log"><li class="empty">暂无操作。点击班次中的人名可为其登记请假。</li></ul>
+  </section>
+
+  <section class="card">
+    <div class="card-title">工作量统计</div>
+    <div id="stats"></div>
+  </section>
+</div>
+
+<script>
+const App = (function(){
+'use strict';
+
+var STORE_KEY = 'duty-scheduler-v1';
+var DEFAULT_ROSTER = ['张伟','李娜','王强','刘洋','陈静','杨帆','赵磊','孙丽'];
+var SHIFT_LIST = [['day','白班'],['night','夜班']];
+var logs = [];
+
+var state = load();
+if(!state){
+  state = { roster: DEFAULT_ROSTER.slice(), startDate: null, days: [] };
+  generate();
+  save();
+}
+
+/* ---------- 持久化 ---------- */
+function load(){
+  try{
+    var raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return null;
+    var s = JSON.parse(raw);
+    if(!s || !Array.isArray(s.roster) || !Array.isArray(s.days) || s.days.length !== 7) return null;
+    for(var i=0;i<7;i++){
+      var d = s.days[i];
+      if(!d || !Array.isArray(d.day) || !Array.isArray(d.night) || !Array.isArray(d.leave)) return null;
+    }
+    return s;
+  }catch(e){ return null; }
+}
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+/* ---------- 日期工具 ---------- */
+function toKey(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function todayKey(){ return toKey(new Date()); }
+function addDays(key,n){ var d=new Date(key+'T00:00:00'); d.setDate(d.getDate()+n); return toKey(d); }
+function fmtDate(key){ var d=new Date(key+'T00:00:00'); return (d.getMonth()+1)+'月'+d.getDate()+'日'; }
+function weekday(key){ return '周'+'日一二三四五六'.charAt(new Date(key+'T00:00:00').getDay()); }
+
+/* ---------- 核心规则 ---------- */
+function shiftCount(st,name){
+  var n=0;
+  for(var i=0;i<st.days.length;i++){
+    if(st.days[i].day.indexOf(name)>=0) n++;
+    if(st.days[i].night.indexOf(name)>=0) n++;
+  }
+  return n;
+}
+
+/* 可补位人选：当天未排班、未请假；补夜班时，前一天/后一天值夜班者排除（规则一） */
+function eligible(st, di, shift){
+  var d = st.days[di];
+  return st.roster.filter(function(name){
+    if(d.day.indexOf(name)>=0 || d.night.indexOf(name)>=0 || d.leave.indexOf(name)>=0) return false;
+    if(shift === 'night'){
+      var prev = st.days[di-1], next = st.days[di+1];
+      if(prev && prev.night.indexOf(name)>=0) return false;
+      if(next && next.night.indexOf(name)>=0) return false;
+    }
+    return true;
+  });
+}
+
+/* 在可补位者中选累计班次最少的（并列随机） */
+function pickCandidate(st, di, shift){
+  var cands = eligible(st, di, shift);
+  if(!cands.length) return null;
+  var min = Infinity, counts = cands.map(function(c){
+    var n = shiftCount(st, c);
+    if(n < min) min = n;
+    return n;
+  });
+  var best = cands.filter(function(c,i){ return counts[i] === min; });
+  return best[Math.floor(Math.random()*best.length)];
+}
+
+/* 把某一天的白班/夜班补到 2 人；补不了就保留缺员并说明原因 */
+function fillDay(di){
+  var msgs = [];
+  var d = state.days[di];
+  for(var s=0;s<SHIFT_LIST.length;s++){
+    var shift = SHIFT_LIST[s][0], label = SHIFT_LIST[s][1];
+    while(d[shift].length < 2){
+      var p = pickCandidate(state, di, shift);
+      if(!p){
+        var reason = '（当天已无人可补）';
+        if(shift === 'night'){
+          var free = state.roster.filter(function(n){
+            return d.day.indexOf(n)<0 && d.night.indexOf(n)<0 && d.leave.indexOf(n)<0;
+          });
+          if(free.length > 0) reason = '（剩余可补者均需连班，规则一优先，宁可缺员）';
+        }
+        msgs.push({text: fmtDate(d.date)+' '+label+'缺员 '+(2-d[shift].length)+' 人'+reason, warn:true});
+        break;
+      }
+      d[shift].push(p);
+      msgs.push({text: p+' 补位 '+fmtDate(d.date)+' '+label, warn:false});
+    }
+  }
+  return msgs;
+}
+
+function repairAll(){
+  var msgs = [];
+  for(var i=0;i<state.days.length;i++) msgs = msgs.concat(fillDay(i));
+  return msgs;
+}
+
+/* 生成未来 7 天排班（满足规则一，尽量满员、均衡） */
+function generate(){
+  state.startDate = todayKey();
+  state.days = [];
+  for(var i=0;i<7;i++) state.days.push({ date: addDays(state.startDate,i), day:[], night:[], leave:[] });
+  for(var d=0;d<7;d++){
+    for(var s=0;s<SHIFT_LIST.length;s++){
+      var shift = SHIFT_LIST[s][0], guard = 0;
+      while(state.days[d][shift].length < 2 && guard++ < 200){
+        var p = pickCandidate(state, d, shift);
+        if(!p) break;
+        state.days[d][shift].push(p);
+      }
+    }
+  }
+}
+
+/* ---------- 对外操作 ---------- */
+function requestLeave(di, name){
+  var d = state.days[di];
+  if(!d) return [];
+  d.day   = d.day.filter(function(n){ return n!==name; });
+  d.night = d.night.filter(function(n){ return n!==name; });
+  if(d.leave.indexOf(name) < 0) d.leave.push(name);
+  var msgs = [{text: name+' 已登记 '+fmtDate(d.date)+' 请假', warn:false}].concat(repairAll());
+  save();
+  return msgs;
+}
+
+function cancelLeave(di, name){
+  var d = state.days[di];
+  if(!d) return [];
+  d.leave = d.leave.filter(function(n){ return n!==name; });
+  var msgs = [{text: name+' 已取消 '+fmtDate(d.date)+' 请假', warn:false}].concat(repairAll());
+  save();
+  return msgs;
+}
+
+function addPerson(name){
+  name = (name||'').trim();
+  if(!name) return [{text:'姓名不能为空', warn:true}];
+  if(name.length > 12) return [{text:'姓名过长', warn:true}];
+  if(state.roster.indexOf(name) >= 0) return [{text:name+' 已在名单中', warn:true}];
+  state.roster.push(name);
+  var msgs = [{text:name+' 已加入名单', warn:false}].concat(repairAll());
+  save();
+  return msgs;
+}
+
+function removePerson(name){
+  state.roster = state.roster.filter(function(n){ return n!==name; });
+  for(var i=0;i<state.days.length;i++){
+    var d = state.days[i];
+    d.day   = d.day.filter(function(n){ return n!==name; });
+    d.night = d.night.filter(function(n){ return n!==name; });
+    d.leave = d.leave.filter(function(n){ return n!==name; });
+  }
+  var msgs = [{text:name+' 已移出名单', warn:false}].concat(repairAll());
+  save();
+  return msgs;
+}
+
+function reset(){
+  try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+  state.roster = DEFAULT_ROSTER.slice();
+  generate();
+  save();
+  return [{text:'已恢复默认名单并重新排班', warn:false}];
+}
+
+/* 校验：无连班、当天不重复、都在名单中（测试与自检用） */
+function violations(st){
+  st = st || state;
+  var v = [];
+  st.days.forEach(function(d,i){
+    if(i > 0){
+      d.night.forEach(function(n){
+        if(st.days[i-1].night.indexOf(n) >= 0) v.push(n+' 在第'+(i+1)+'天连续夜班');
+      });
+    }
+    var all = d.day.concat(d.night, d.leave);
+    all.forEach(function(n,j){
+      if(all.indexOf(n) !== j) v.push('第'+(i+1)+'天 '+n+' 重复出现');
+      if(st.roster.indexOf(n) < 0) v.push('第'+(i+1)+'天 '+n+' 不在名单中');
+    });
+  });
+  return v;
+}
+
+/* ---------- UI ---------- */
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function countsOf(name){
+  var c = {day:0, night:0, leave:0};
+  state.days.forEach(function(d){
+    if(d.day.indexOf(name)>=0) c.day++;
+    if(d.night.indexOf(name)>=0) c.night++;
+    if(d.leave.indexOf(name)>=0) c.leave++;
+  });
+  return c;
+}
+function flash(msgs){
+  logs = msgs.concat(logs).slice(0, 30);
+  render();
+}
+function shiftChips(arr, shift, di){
+  var html = arr.map(function(n){
+    return '<button class="chip '+shift+'" data-action="leave" data-day="'+di+'" data-name="'+esc(n)+'" title="点击为 '+esc(n)+' 请假">'+esc(n)+'</button>';
+  }).join('');
+  for(var k=arr.length;k<2;k++) html += '<span class="chip short">缺员</span>';
+  return html;
+}
+function leaveCell(d, i){
+  var html = d.leave.map(function(n){
+    return '<button class="chip leav" data-action="cancel-leave" data-day="'+i+'" data-name="'+esc(n)+'" title="点击取消请假">'+esc(n)+'</button>';
+  }).join('');
+  var cands = state.roster.filter(function(n){
+    return d.day.indexOf(n)<0 && d.night.indexOf(n)<0 && d.leave.indexOf(n)<0;
+  });
+  if(cands.length){
+    html += '<button class="chip add" data-action="toggle-addleave" data-day="'+i+'">＋请假</button>';
+    html += '<span class="addleave" id="addleave-'+i+'" hidden>'
+          + '<select id="als-'+i+'">'+cands.map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('')+'</select>'
+          + '<button data-action="confirm-addleave" data-day="'+i+'">确定</button></span>';
+  }
+  return html || '<span style="color:var(--muted);font-size:13px">—</span>';
+}
+function render(){
+  var tk = todayKey();
+  document.getElementById('roster').innerHTML = state.roster.map(function(n){
+    var c = countsOf(n);
+    return '<span class="chip roster-chip">'+esc(n)+'<em>白'+c.day+' 夜'+c.night+'</em>'
+         + '<button class="x" data-action="remove-person" data-name="'+esc(n)+'" title="移出名单">×</button></span>';
+  }).join('');
+
+  document.getElementById('tbody').innerHTML = state.days.map(function(d,i){
+    var short = d.day.length<2 || d.night.length<2;
+    return '<tr class="'+(short?'row-short':'')+'">'
+      + '<td class="datecell"><b>'+fmtDate(d.date)+'</b><span class="wk">'+weekday(d.date)+'</span>'
+      + (d.date===tk ? '<span class="today">今天</span>' : '') + '</td>'
+      + '<td>'+shiftChips(d.day,'day',i)+'</td>'
+      + '<td>'+shiftChips(d.night,'night',i)+'</td>'
+      + '<td>'+leaveCell(d,i)+'</td></tr>';
+  }).join('');
+
+  document.getElementById('log').innerHTML = logs.length
+    ? logs.map(function(m){ return '<li class="'+(m.warn?'warn':'')+'">'+esc(m.text)+'</li>'; }).join('')
+    : '<li class="empty">暂无操作。点击班次中的人名可为其登记请假。</li>';
+
+  document.getElementById('stats').innerHTML = state.roster.map(function(n){
+    var c = countsOf(n);
+    return '<span class="stat"><b>'+esc(n)+'</b> 白班 '+c.day+' · 夜班 '+c.night+' · 请假 '+c.leave+'</span>';
+  }).join('');
+}
+function onClick(e){
+  var t = e.target.closest('[data-action]');
+  if(!t) return;
+  var a = t.dataset.action, di = +t.dataset.day, name = t.dataset.name;
+  if(a === 'leave'){
+    if(confirm('确定 '+name+' 在 '+fmtDate(state.days[di].date)+' 请假？\n系统将从当天未排班也未请假的人中自动补位。'))
+      flash(requestLeave(di, name));
+  }else if(a === 'cancel-leave'){
+    if(confirm('取消 '+name+' 在 '+fmtDate(state.days[di].date)+' 的请假？'))
+      flash(cancelLeave(di, name));
+  }else if(a === 'toggle-addleave'){
+    var p = document.getElementById('addleave-'+di);
+    if(p) p.hidden = !p.hidden;
+  }else if(a === 'confirm-addleave'){
+    var sel = document.getElementById('als-'+di);
+    if(sel && sel.value) flash(requestLeave(di, sel.value));
+  }else if(a === 'remove-person'){
+    if(confirm('将 '+name+' 移出名单？其 7 天内的班次会由系统自动补位。'))
+      flash(removePerson(name));
+  }else if(a === 'add-person'){
+    var n = prompt('输入新同事姓名：');
+    if(n !== null) flash(addPerson(n));
+  }else if(a === 'regenerate'){
+    if(confirm('重新生成未来 7 天排班？现有排班与请假记录将被清空。')){
+      generate(); save();
+      flash([{text:'已重新生成排班', warn:false}]);
+    }
+  }else if(a === 'reset'){
+    if(confirm('清空本地全部数据并恢复默认？')) flash(reset());
+  }
+}
+
+var api = {
+  get state(){ return state; },
+  set state(s){ state = s; },
+  load: load, save: save, generate: generate,
+  requestLeave: requestLeave, cancelLeave: cancelLeave,
+  addPerson: addPerson, removePerson: removePerson, reset: reset,
+  fillDay: fillDay, repairAll: repairAll, eligible: eligible,
+  violations: violations, shiftCount: shiftCount
+};
+if(typeof module !== 'undefined' && module.exports) module.exports = api;
+if(typeof document !== 'undefined'){
+  document.addEventListener('click', onClick);
+  render();
+}
+return api;
+})();
+</script>
+</body>
+</html>
