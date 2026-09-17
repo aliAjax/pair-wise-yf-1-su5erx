@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>值班排班表</title>
+<style>
+  :root{
+    --bg:#f3f5fa; --card:#ffffff; --line:#e6e9f2; --text:#1f2937; --muted:#6b7280;
+    --day:#92400e;  --day-bg:#fef3c7;
+    --night:#3730a3; --night-bg:#e0e7ff;
+    --danger:#dc2626; --danger-bg:#fee2e2;
+    --warn:#b45309;  --warn-bg:#ffedd5;
+    --ok:#047857;    --ok-bg:#d1fae5;
+    --primary:#2563eb; --primary-d:#1d4ed8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;}
+  header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:22px 20px;}
+  header .wrap{max-width:1080px;margin:0 auto;}
+  header h1{margin:0;font-size:22px;letter-spacing:1px;}
+  header p{margin:6px 0 0;font-size:13px;opacity:.85;}
+  main{max-width:1080px;margin:0 auto;padding:20px 16px 60px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,.05);}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--muted);font-weight:600;letter-spacing:.5px;}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr;}}
+  label{font-size:13px;color:var(--muted);}
+  select,input[type=date],input[type=text]{font:inherit;font-size:14px;padding:7px 10px;
+    border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);}
+  button{font:inherit;font-size:14px;padding:8px 14px;border:none;border-radius:8px;cursor:pointer;
+    background:var(--primary);color:#fff;transition:background .15s;}
+  button:hover{background:var(--primary-d);}
+  button.ghost{background:#eef2ff;color:var(--primary);}
+  button.ghost:hover{background:#e0e7ff;}
+  button.danger-btn{background:#fff;color:var(--danger);border:1px solid #fecaca;}
+  button.danger-btn:hover{background:var(--danger-bg);}
+  /* 排班表 */
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:middle;}
+  thead th{background:#f8fafc;font-size:13px;color:var(--muted);white-space:nowrap;}
+  tbody tr:hover{background:#fafbff;}
+  td.date{white-space:nowrap;font-weight:600;}
+  td.date small{display:block;font-weight:400;color:var(--muted);}
+  select.slot{width:7.5em;margin:2px 4px 2px 0;font-weight:600;}
+  select.slot.day{background:var(--day-bg);color:var(--day);border-color:#fde68a;}
+  select.slot.night{background:var(--night-bg);color:var(--night);border-color:#c7d2fe;}
+  select.slot.empty{background:var(--danger-bg);color:var(--danger);border:1px dashed var(--danger);font-weight:700;}
+  select.slot.viol{outline:2px solid var(--danger);outline-offset:1px;}
+  .chip{display:inline-flex;align-items:center;gap:4px;background:#f3f4f6;border:1px solid var(--line);
+    border-radius:999px;padding:3px 6px 3px 10px;margin:2px 4px 2px 0;font-size:13px;}
+  .chip button{background:none;border:none;color:var(--muted);cursor:pointer;padding:0 4px;font-size:14px;line-height:1;}
+  .chip button:hover{color:var(--danger);}
+  .badge{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;margin:2px 4px 2px 0;white-space:nowrap;}
+  .badge.ok{background:var(--ok-bg);color:var(--ok);}
+  .badge.danger{background:var(--danger-bg);color:var(--danger);}
+  .badge.warn{background:var(--warn-bg);color:var(--warn);}
+  .legend{font-size:12px;color:var(--muted);margin-top:10px;display:flex;flex-wrap:wrap;gap:14px;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
+  /* 统计表 */
+  #statsBody td{text-align:center;}
+  #statsBody td:first-child, thead th:first-child{text-align:left;}
+  /* 提示 */
+  #toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);
+    background:#111827;color:#fff;padding:10px 18px;border-radius:10px;font-size:14px;
+    opacity:0;pointer-events:none;transition:all .25s;max-width:90vw;z-index:99;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>值班排班表</h1>
+    <p>7 天 · 白班 / 夜班各 2 人 · 规则一：不得连续两个夜班（优先） · 规则二：每班凑满 2 人 · 补位只能靠连班时，宁可缺员也不连班</p>
+  </div>
+</header>
+<main>
+  <!-- 工具栏 -->
+  <div class="card">
+    <div class="row">
+      <label>周起始日（周一） <input type="date" id="weekStart"></label>
+      <button id="btnGenerate">自动生成整周排班</button>
+      <button id="btnFill" class="ghost">自动补位空缺</button>
+      <button id="btnReset" class="danger-btn">重置全部数据</button>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- 请假申请 -->
+    <div class="card">
+      <h2>请假申请（提交后自动补位）</h2>
+      <div class="row">
+        <select id="leavePerson"></select>
+        <select id="leaveDay"></select>
+        <button id="btnLeave">提交请假</button>
+      </div>
+    </div>
+    <!-- 人员管理 -->
+    <div class="card">
+      <h2>同事名单</h2>
+      <div id="staffChips"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="newStaff" placeholder="输入姓名" maxlength="10">
+        <button id="btnAddStaff" class="ghost">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 排班表 -->
+  <div class="card">
+    <h2>本周排班</h2>
+    <table>
+      <thead>
+        <tr><th>日期</th><th>白班（2 人）</th><th>夜班（2 人）</th><th>请假</th><th>状态</th></tr>
+      </thead>
+      <tbody id="schedBody"></tbody>
+    </table>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--day-bg);border:1px solid #fde68a"></i>白班</span>
+      <span><i class="dot" style="background:var(--night-bg);border:1px solid #c7d2fe"></i>夜班</span>
+      <span><i class="dot" style="background:var(--danger-bg);border:1px dashed var(--danger)"></i>缺员（规则一优先，不安排连班）</span>
+      <span><i class="dot" style="background:var(--warn-bg)"></i>连班警告（手动调整导致）</span>
+    </div>
+  </div>
+
+  <!-- 工作量统计 -->
+  <div class="card">
+    <h2>本周工作量</h2>
+    <table>
+      <thead><tr><th>姓名</th><th>白班</th><th>夜班</th><th>请假</th><th>合计班次</th></tr></thead>
+      <tbody id="statsBody"></tbody>
+    </table>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ================= 数据与持久化 ================= */
+const STORAGE_KEY = 'duty-scheduler-v1';
+const DAY_NAMES = ['周一','周二','周三','周四','周五','周六','周日'];
+const DEFAULT_STAFF = ['张伟','李娜','王强','赵敏','陈杰','杨柳','周涛','吴芳'];
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function fmtDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function mondayOf(date){
+  const d = new Date(date); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - (d.getDay()+6)%7); // 归到周一
+  return fmtDate(d);
+}
+function emptyWeek(){
+  const o = {};
+  for(let d=0; d<7; d++) o[d] = { day:[], night:[] };
+  return o;
+}
+function emptyLeaves(){
+  const o = {};
+  for(let d=0; d<7; d++) o[d] = [];
+  return o;
+}
+function seed(){
+  return { staff:[...DEFAULT_STAFF], schedule:emptyWeek(), leaves:emptyLeaves(), weekStart:mondayOf(new Date()) };
+}
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if(s && s.staff && s.schedule && s.leaves && s.weekStart) return s;
+  }catch(e){}
+  return null;
+}
+
+let state = load();
+if(!state){ state = seed(); generate(); save(); }
+
+/* ================= 核心规则 ================= */
+function isOnLeave(d,p){ return state.leaves[d].includes(p); }
+function assigned(d,p){ const s=state.schedule[d]; return s.day.includes(p) || s.night.includes(p); }
+function hasNight(d,p){ return d>=0 && d<7 && state.schedule[d].night.includes(p); }
+// 规则一：前后一天都没有夜班，才能排这天的夜班
+function canNight(d,p){ return !hasNight(d-1,p) && !hasNight(d+1,p); }
+function totalShifts(p){
+  let n=0;
+  for(let d=0; d<7; d++){
+    if(state.schedule[d].day.includes(p)) n++;
+    if(state.schedule[d].night.includes(p)) n++;
+  }
+  return n;
+}
+// 补位候选人：当天既没排班也没请假；若补夜班还需满足规则一
+function candidates(d, shift){
+  return state.staff.filter(p =>
+    !isOnLeave(d,p) && !assigned(d,p) && (shift==='day' || canNight(d,p))
+  );
+}
+// 优先选本周总班次最少的人（兼顾公平），并列按名单顺序
+function pick(d, shift){
+  const c = candidates(d, shift);
+  if(!c.length) return null;
+  c.sort((a,b) => totalShifts(a)-totalShifts(b) || state.staff.indexOf(a)-state.staff.indexOf(b));
+  return c[0];
+}
+// 补一个空位，返回补位人姓名；无人可补（只能连班）时返回 null，保持缺员
+function fillOne(d, shift){
+  const arr = state.schedule[d][shift];
+  if(arr.length >= 2) return null;
+  const p = pick(d, shift);
+  if(p) arr.push(p);
+  return p;
+}
+// 补齐整周所有空位（夜班约束更强，先补夜班）
+function fillVacancies(){
+  for(const shift of ['night','day'])
+    for(let d=0; d<7; d++)
+      while(state.schedule[d][shift].length < 2){
+        if(!fillOne(d, shift)) break; // 无人可补 → 保留缺员
+      }
+}
+function generate(){
+  state.schedule = emptyWeek();
+  fillVacancies();
+}
+
+/* ================= 请假与补位 ================= */
+function submitLeave(d, p){
+  if(isOnLeave(d,p)){ toast(p+' 当天已在请假中'); return; }
+  const s = state.schedule[d];
+  const wasDay = s.day.includes(p), wasNight = s.night.includes(p);
+  s.day   = s.day.filter(x => x!==p);
+  s.night = s.night.filter(x => x!==p);
+  state.leaves[d].push(p);
+
+  const msgs = [`已登记 ${p} ${DAY_NAMES[d]}请假`];
+  // 先补夜班（约束更强），再补白班
+  if(wasNight) msgs.push(fillOne(d,'night') ? `夜班由 ${state.schedule[d].night[state.schedule[d].night.length-1]} 补位` : '夜班无人可补，已标记缺员（不安排连班）');
+  if(wasDay)   msgs.push(fillOne(d,'day')   ? `白班由 ${state.schedule[d].day[state.schedule[d].day.length-1]} 补位`     : '白班无人可补，已标记缺员');
+  save(); render(); toast(msgs.join('；'));
+}
+function cancelLeave(d, p){
+  state.leaves[d] = state.leaves[d].filter(x => x!==p);
+  fillVacancies(); // 销假后尝试补齐空缺
+  save(); render(); toast(`已取消 ${p} ${DAY_NAMES[d]}的请假`);
+}
+
+/* ================= 渲染 ================= */
+const $ = id => document.getElementById(id);
+
+function dayDate(d){
+  const dt = new Date(state.weekStart + 'T00:00:00');
+  dt.setDate(dt.getDate()+d);
+  return dt;
+}
+function dayLabel(d){
+  const dt = dayDate(d);
+  return `${DAY_NAMES[d]} ${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+}
+function nightViolation(d,p){ return hasNight(d,p) && (hasNight(d-1,p) || hasNight(d+1,p)); }
+
+function slotSelect(d, shift, idx){
+  const arr = state.schedule[d][shift];
+  const cur = arr[idx];
+  const sel = document.createElement('select');
+  sel.className = 'slot ' + shift + (cur ? '' : ' empty');
+  sel.appendChild(new Option(cur ? '（空）' : '⚠ 缺员', ''));
+  for(const p of state.staff){
+    const o = new Option(p, p);
+    if(isOnLeave(d,p)) o.disabled = true;            // 请假者不可选
+    if(p!==cur && assigned(d,p)) o.disabled = true;  // 当天已排班者不可重复
+    sel.appendChild(o);
+  }
+  sel.value = cur || '';
+  if(cur && shift==='night' && nightViolation(d,cur)) sel.classList.add('viol');
+  sel.onchange = () => {
+    const i = arr.indexOf(cur);
+    if(i>=0) arr.splice(i,1);
+    if(sel.value) arr.push(sel.value);
+    save(); render();
+  };
+  return sel;
+}
+
+function renderTable(){
+  const tbody = $('schedBody');
+  tbody.innerHTML = '';
+  for(let d=0; d<7; d++){
+    const tr = document.createElement('tr');
+
+    const tdDate = document.createElement('td');
+    tdDate.className = 'date';
+    tdDate.innerHTML = `${DAY_NAMES[d]}<small>${pad(dayDate(d).getMonth()+1)}-${pad(dayDate(d).getDate())}</small>`;
+    tr.appendChild(tdDate);
+
+    for(const shift of ['day','night']){
+      const td = document.createElement('td');
+      td.appendChild(slotSelect(d, shift, 0));
+      td.appendChild(slotSelect(d, shift, 1));
+      tr.appendChild(td);
+    }
+
+    const tdLeave = document.createElement('td');
+    if(!state.leaves[d].length) tdLeave.innerHTML = '<span style="color:var(--muted)">—</span>';
+    for(const p of state.leaves[d]){
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = p;
+      const x = document.createElement('button');
+      x.textContent = '×'; x.title = '取消请假';
+      x.onclick = () => cancelLeave(d,p);
+      chip.appendChild(x);
+      tdLeave.appendChild(chip);
+    }
+    tr.appendChild(tdLeave);
+
+    const tdStatus = document.createElement('td');
+    let ok = true;
+    for(const shift of ['day','night']){
+      const miss = 2 - state.schedule[d][shift].length;
+      if(miss > 0){
+        ok = false;
+        const b = document.createElement('span');
+        b.className = 'badge danger';
+        b.textContent = `${shift==='day'?'白班':'夜班'}缺 ${miss} 人`;
+        tdStatus.appendChild(b);
+      }
+    }
+    for(const p of state.schedule[d].night.filter(p => nightViolation(d,p))){
+      ok = false;
+      const b = document.createElement('span');
+      b.className = 'badge warn';
+      b.textContent = `${p} 连续夜班`;
+      tdStatus.appendChild(b);
+    }
+    if(ok){
+      const b = document.createElement('span');
+      b.className = 'badge ok';
+      b.textContent = '正常';
+      tdStatus.appendChild(b);
+    }
+    tr.appendChild(tdStatus);
+
+    tbody.appendChild(tr);
+  }
+}
+
+function renderStaff(){
+  const box = $('staffChips');
+  box.innerHTML = '';
+  for(const p of state.staff){
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = p;
+    const x = document.createElement('button');
+    x.textContent = '×'; x.title = '移出名单';
+    x.onclick = () => {
+      if(!confirm(`将 ${p} 移出名单？其排班与请假记录会一并移除。`)) return;
+      state.staff = state.staff.filter(s => s!==p);
+      for(let d=0; d<7; d++){
+        state.schedule[d].day   = state.schedule[d].day.filter(s => s!==p);
+        state.schedule[d].night = state.schedule[d].night.filter(s => s!==p);
+        state.leaves[d] = state.leaves[d].filter(s => s!==p);
+      }
+      save(); render();
+    };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  }
+}
+
+function renderLeaveForm(){
+  const ps = $('leavePerson');
+  ps.innerHTML = '';
+  for(const p of state.staff) ps.appendChild(new Option(p,p));
+  const ds = $('leaveDay');
+  ds.innerHTML = '';
+  for(let d=0; d<7; d++) ds.appendChild(new Option(dayLabel(d), d));
+}
+
+function renderStats(){
+  const tbody = $('statsBody');
+  tbody.innerHTML = '';
+  for(const p of state.staff){
+    let day=0, night=0, leave=0;
+    for(let d=0; d<7; d++){
+      if(state.schedule[d].day.includes(p)) day++;
+      if(state.schedule[d].night.includes(p)) night++;
+      if(state.leaves[d].includes(p)) leave++;
+    }
+    const tr = document.createElement('tr');
+    for(const v of [p, day, night, leave, day+night]){
+      const td = document.createElement('td');
+      td.textContent = v;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+}
+
+function render(){
+  $('weekStart').value = state.weekStart;
+  renderStaff();
+  renderLeaveForm();
+  renderTable();
+  renderStats();
+}
+
+/* ================= 提示 ================= */
+let toastTimer;
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+/* ================= 事件绑定 ================= */
+$('btnLeave').onclick = () => {
+  const p = $('leavePerson').value;
+  const d = Number($('leaveDay').value);
+  if(!p) return;
+  submitLeave(d, p);
+};
+$('btnGenerate').onclick = () => {
+  if(!confirm('将清空当前排班并重新自动生成（保留请假记录），确定？')) return;
+  generate(); save(); render(); toast('已重新生成整周排班');
+};
+$('btnFill').onclick = () => { fillVacancies(); save(); render(); toast('已尝试补齐所有空缺'); };
+$('btnReset').onclick = () => {
+  if(!confirm('清空浏览器中保存的全部数据并恢复默认？')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = seed(); generate(); save(); render(); toast('已重置');
+};
+$('btnAddStaff').onclick = () => {
+  const name = $('newStaff').value.trim();
+  if(!name) return;
+  if(state.staff.includes(name)){ toast('该同事已在名单中'); return; }
+  state.staff.push(name);
+  $('newStaff').value = '';
+  save(); render();
+};
+$('newStaff').addEventListener('keydown', e => { if(e.key==='Enter') $('btnAddStaff').click(); });
+$('weekStart').onchange = e => {
+  if(!e.target.value) return;
+  state.weekStart = e.target.value;
+  save(); render();
+};
+
+render();
+</script>
+</body>
+</html>
